@@ -1502,12 +1502,6 @@
               "description": "Receive alerts to steer back into the lane when your vehicle drifts over a detected lane line without a turn signal activated while driving over 31 mph (50 km/h)."
             },
             {
-              "key": "AlwaysOnDM",
-              "widget": "toggle",
-              "title": "Always-On Driver Monitoring",
-              "description": "Enable driver monitoring even when sunnypilot is not engaged."
-            },
-            {
               "key": "IsMetric",
               "widget": "toggle",
               "title": "Use Metric System",
@@ -1520,13 +1514,6 @@
           "title": "Recording",
           "description": "Camera and audio recording during drives",
           "items": [
-            {
-              "key": "RecordFront",
-              "widget": "toggle",
-              "needs_onroad_cycle": true,
-              "title": "Record and Upload Driver Camera",
-              "description": "Upload data from the driver facing camera and help improve the driver monitoring algorithm."
-            },
             {
               "key": "RecordAudio",
               "widget": "toggle",

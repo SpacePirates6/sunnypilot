@@ -46,7 +46,6 @@ PROCS = {
   "system.sensord.sensord": 13.0,
   "selfdrive.controls.radard": 2.0,
   "selfdrive.modeld.modeld": 22.0,
-  "selfdrive.modeld.dmonitoringmodeld": 18.0,
   "system.hardware.hardwared": 4.0,
   "selfdrive.locationd.calibrationd": 2.0,
   "selfdrive.locationd.torqued": 5.0,
@@ -83,7 +82,6 @@ TIMINGS = {
   "longitudinalPlan": [2.5, 0.5],
   "driverAssistance": [2.5, 0.5],
   "roadCameraState": [2.5, 0.35],
-  "driverCameraState": [2.5, 0.35],
   "modelV2": [2.5, 0.35],
   "driverStateV2": [2.5, 0.40],
   "livePose": [2.5, 0.35],
@@ -96,7 +94,7 @@ LOGS_SIZE = {  # MB per segment
   "rlog.zst": 8.1,
   "qcamera.ts": 2.3,
 }
-LOGS_SIZE.update(dict.fromkeys(['ecamera.hevc', 'fcamera.hevc', 'dcamera.hevc'], 76.5))
+LOGS_SIZE.update(dict.fromkeys(['ecamera.hevc', 'fcamera.hevc'], 76.5))
 
 
 def cputime_total(ct):
@@ -119,7 +117,7 @@ class TestOnroad:
     # setup env
     params = Params()
     params.remove("CurrentRoute")
-    params.put_bool("RecordFront", True, block=True)
+    params.put_bool("RecordFront", False, block=True)
     set_params_enabled()
     os.environ['REPLAY'] = '1'
     os.environ['MSGQ_PREALLOC'] = '1'
@@ -303,7 +301,7 @@ class TestOnroad:
     result += "------------------------------------------------\n"
     result += "-----------------  SOF Timing ------------------\n"
     result += "------------------------------------------------\n"
-    for name in ['roadCameraState', 'wideRoadCameraState', 'driverCameraState']:
+    for name in ['roadCameraState', 'wideRoadCameraState']:
       ts = self.ts[name]['timestampSof']
       d_ms = np.diff(ts) / 1e6
       d50 = np.abs(d_ms-50)
@@ -316,8 +314,8 @@ class TestOnroad:
     print(result)
 
   def test_camera_sync(self, subtests):
-    cam_states = ['roadCameraState', 'wideRoadCameraState', 'driverCameraState']
-    encode_cams = ['roadEncodeIdx', 'wideRoadEncodeIdx', 'driverEncodeIdx']
+    cam_states = ['roadCameraState', 'wideRoadCameraState']
+    encode_cams = ['roadEncodeIdx', 'wideRoadEncodeIdx']
     for cams in (cam_states, encode_cams):
       with subtests.test(cams=cams):
         # sanity checks within a single cam
@@ -332,7 +330,7 @@ class TestOnroad:
 
         first_fid = {min(self.ts[c]['frameId']) for c in cams}
         assert len(first_fid) == 1, "Cameras don't start on same frame ID"
-        if cam.endswith('CameraState'):
+        if cams[0].endswith('CameraState'):
           # camerad guarantees that all cams start on frame ID 0
           # (note loggerd also needs to start up fast enough to catch it)
           assert next(iter(first_fid)) < 100, "Cameras start on frame ID too high"
@@ -343,20 +341,15 @@ class TestOnroad:
 
         start, end = min(first_fid), min(last_fid)
         for i in range(end-start):
-          # road and wide cameras (first two) should be synced within 2ms
-          ts = {c: round(self.ts[c]['timestampSof'][i]/1e6, 1) for c in cams[:2]}
+          # road and wide cameras should be synced within 2ms
+          ts = {c: round(self.ts[c]['timestampSof'][i]/1e6, 1) for c in cams}
           diff = (max(ts.values()) - min(ts.values()))
           assert diff < 2, f"Cameras not synced properly: frame_id={start+i}, {diff=:.1f}ms, {ts=}"
-
-          # driver camera should be staggered ~25ms from road camera
-          offset_ms = abs(self.ts[cams[2]]['timestampSof'][i] - self.ts[cams[0]]['timestampSof'][i]) / 1e6
-          assert 20 < offset_ms < 30, f"driver camera stagger out of range at frame {start+i}: {offset_ms:.1f}ms"
 
   def test_camera_encoder_matches(self, subtests):
     # sanity check that the frame metadata is consistent with the encoded frames
     pairs = [('roadCameraState', 'roadEncodeIdx'),
-             ('wideRoadCameraState', 'wideRoadEncodeIdx'),
-             ('driverCameraState', 'driverEncodeIdx')]
+             ('wideRoadCameraState', 'wideRoadEncodeIdx')]
     for cam, enc in pairs:
       with subtests.test(camera=cam, encoder=enc):
         cam_frames = {fid: (sof, eof) for fid, sof, eof in zip(

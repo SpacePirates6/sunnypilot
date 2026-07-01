@@ -18,6 +18,7 @@ from openpilot.selfdrive.car.car_specific import CarSpecificEvents
 from openpilot.selfdrive.locationd.helpers import PoseCalibrator, Pose
 from openpilot.selfdrive.selfdrived.events import Events, ET
 from openpilot.selfdrive.selfdrived.helpers import ExcessiveActuationCheck
+from openpilot.selfdrive.monitoring.dm_stub import DM_DISABLED
 from openpilot.selfdrive.selfdrived.state import StateMachine
 from openpilot.selfdrive.selfdrived.alertmanager import AlertManager, set_offroad_alert
 
@@ -86,7 +87,7 @@ class SelfdriveD(CruiseHelper):
     self.gps_location_service = get_gps_location_service(self.params)
     self.gps_packets = [self.gps_location_service]
     self.sensor_packets = ["accelerometer", "gyroscope"]
-    self.camera_packets = ["roadCameraState", "driverCameraState", "wideRoadCameraState"]
+    self.camera_packets = ["roadCameraState", "wideRoadCameraState"]
 
     # TODO: de-couple selfdrived with card/conflate on carState without introducing controls mismatches
     self.car_state_sock = messaging.sub_sock('carState', timeout=20)
@@ -222,25 +223,26 @@ class SelfdriveD(CruiseHelper):
 
     # Handle DM
     if not self.CP.notCar:
-      # Block engaging until ignition cycle after max number or time of distractions
-      if self.sm['driverMonitoringState'].lockout and not self.dm_lockout_set:
-        self.params.put_bool("DriverTooDistracted", True)
-        self.dm_lockout_set = True
-      # No entry conditions
-      if self.sm['driverMonitoringState'].lockout or self.sm['driverMonitoringState'].alwaysOnLockout:
-        self.events.add(EventName.tooDistracted)
-      # Alerts
-      vision_dm = self.sm['driverMonitoringState'].activePolicy == MonitoringPolicy.vision
-      if self.sm['driverMonitoringState'].alertLevel == AlertLevel.one:
-        self.events.add(EventName.driverDistracted1 if vision_dm else EventName.driverUnresponsive1)
-      elif self.sm['driverMonitoringState'].alertLevel == AlertLevel.two:
-        self.events.add(EventName.driverDistracted2 if vision_dm else EventName.driverUnresponsive2)
-      elif self.sm['driverMonitoringState'].alertLevel == AlertLevel.three:
-        self.events.add(EventName.driverDistracted3 if vision_dm else EventName.driverUnresponsive3)
-      # Warn consistent DM uncertainty
-      if self.sm['driverMonitoringState'].visionPolicyState.uncertainOffroadAlertPercent >= 100 and not self.dm_uncertain_alerted:
-        set_offroad_alert("Offroad_DriverMonitoringUncertain", True)
-        self.dm_uncertain_alerted = True
+      if not DM_DISABLED:
+        # Block engaging until ignition cycle after max number or time of distractions
+        if self.sm['driverMonitoringState'].lockout and not self.dm_lockout_set:
+          self.params.put_bool("DriverTooDistracted", True)
+          self.dm_lockout_set = True
+        # No entry conditions
+        if self.sm['driverMonitoringState'].lockout or self.sm['driverMonitoringState'].alwaysOnLockout:
+          self.events.add(EventName.tooDistracted)
+        # Alerts
+        vision_dm = self.sm['driverMonitoringState'].activePolicy == MonitoringPolicy.vision
+        if self.sm['driverMonitoringState'].alertLevel == AlertLevel.one:
+          self.events.add(EventName.driverDistracted1 if vision_dm else EventName.driverUnresponsive1)
+        elif self.sm['driverMonitoringState'].alertLevel == AlertLevel.two:
+          self.events.add(EventName.driverDistracted2 if vision_dm else EventName.driverUnresponsive2)
+        elif self.sm['driverMonitoringState'].alertLevel == AlertLevel.three:
+          self.events.add(EventName.driverDistracted3 if vision_dm else EventName.driverUnresponsive3)
+        # Warn consistent DM uncertainty
+        if self.sm['driverMonitoringState'].visionPolicyState.uncertainOffroadAlertPercent >= 100 and not self.dm_uncertain_alerted:
+          set_offroad_alert("Offroad_DriverMonitoringUncertain", True)
+          self.dm_uncertain_alerted = True
       self.events_sp.add_from_msg(self.sm['longitudinalPlanSP'].events)
 
     # Add car events, ignore if CAN isn't valid
